@@ -49,8 +49,8 @@ const MEALS = {
 };
 
 const DAY_TYPES = {
-  Lundi: "force", Mardi: "force", Mercredi: "running",
-  Jeudi: "force", Vendredi: "force", Samedi: "running", Dimanche: "repos",
+  Lundi: "running", Mardi: "force", Mercredi: "running",
+  Jeudi: "force", Vendredi: "running", Samedi: "force", Dimanche: "repos",
 };
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const todayIndex = (new Date().getDay() + 6) % 7;
@@ -71,16 +71,88 @@ const MacroBar = ({ label, value, max, color }) => {
   );
 };
 
+const MonthlyChart = ({ data }) => {
+  if (!data || data.length < 2) return <div style={{ height: 100, display: "flex", alignItems: "center", justifyContent: "center", color: "#444", fontSize: 12 }}>Ajoute au moins 2 points pour voir l'évolution</div>;
+
+  const width = 400;
+  const height = 150;
+  const padding = 20;
+
+  const weights = data.map(d => d.weight);
+  const minW = Math.min(...weights) - 1;
+  const maxW = Math.max(...weights) + 1;
+
+  const points = data.map((d, i) => {
+    const x = (i / (data.length - 1)) * (width - 2 * padding) + padding;
+    const y = height - ((d.weight - minW) / (maxW - minW)) * (height - 2 * padding) - padding;
+    return `${x},${y}`;
+  }).join(" ");
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: "auto" }}>
+      <polyline
+        fill="none"
+        stroke="#a8ff78"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={points}
+      />
+      {data.map((d, i) => {
+        const x = (i / (data.length - 1)) * (width - 2 * padding) + padding;
+        const y = height - ((d.weight - minW) / (maxW - minW)) * (height - 2 * padding) - padding;
+        return (
+          <circle key={i} cx={x} cy={y} r="4" fill="#111" stroke="#a8ff78" strokeWidth="2" />
+        );
+      })}
+    </svg>
+  );
+};
+
 export default function NutritionDashboard() {
   const [dayType, setDayType] = useState(DAY_TYPES[todayName]);
   const [phase, setPhase] = useState(1);
   const [checkedMeals, setCheckedMeals] = useState({});
-  const [selectedMeals, setSelectedMeals] = useState({});
   const [water, setWater] = useState(0);
   const [activeTab, setActiveTab] = useState("journal");
   const [generatedPlan, setGeneratedPlan] = useState(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [selectedDay, setSelectedDay] = useState(todayName);
+  const [history, setHistory] = useState([]);
+  const [weight, setWeight] = useState("");
+
+  // Persistence & Daily Reset
+  useEffect(() => {
+    const saved = localStorage.getItem("nutri_data");
+    if (saved) {
+      const data = JSON.parse(saved);
+      const lastDate = data.date;
+      const today = new Date().toLocaleDateString();
+
+      setHistory(data.history || []);
+      setPhase(data.phase || 1);
+
+      if (lastDate === today) {
+        setCheckedMeals(data.checkedMeals || {});
+        setWater(data.water || 0);
+      } else {
+        // Daily reset
+        setCheckedMeals({});
+        setWater(0);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const data = {
+      date: new Date().toLocaleDateString(),
+      checkedMeals,
+      water,
+      history,
+      phase
+    };
+    localStorage.setItem("nutri_data", JSON.stringify(data));
+  }, [checkedMeals, water, history, phase]);
 
   const getTargets = () => {
     const base = { ...MACROS[dayType] };
@@ -221,6 +293,7 @@ Réponds UNIQUEMENT en JSON, sans backticks ni preamble, exactement ce format :
         <button style={tabStyle(activeTab === "journal")} onClick={() => setActiveTab("journal")}>Journal</button>
         <button style={tabStyle(activeTab === "plan")} onClick={() => setActiveTab("plan")}>Plan IA</button>
         <button style={tabStyle(activeTab === "hydra")} onClick={() => setActiveTab("hydra")}>Hydratation</button>
+        <button style={tabStyle(activeTab === "suivi")} onClick={() => setActiveTab("suivi")}>Suivi</button>
       </div>
 
       {/* Tab: Journal */}
@@ -365,6 +438,52 @@ Réponds UNIQUEMENT en JSON, sans backticks ni preamble, exactement ce format :
               ✅ Objectif hydratation atteint !
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tab: Suivi */}
+      {activeTab === "suivi" && (
+        <div style={{ padding: "20px" }}>
+          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 16 }}>Suivi de l'évolution</div>
+
+          <div style={{ background: "#161616", padding: 16, borderRadius: 12, marginBottom: 20 }}>
+            <div style={{ fontSize: 13, color: "#888", marginBottom: 8 }}>Poids du jour (kg)</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <input
+                type="number"
+                value={weight}
+                onChange={(e) => setWeight(e.target.value)}
+                style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid #333", background: "#111", color: "#eee" }}
+              />
+              <button
+                onClick={() => {
+                  if (!weight) return;
+                  const newEntry = { date: new Date().toLocaleDateString(), weight: parseFloat(weight) };
+                  setHistory(prev => {
+                    const filtered = prev.filter(e => e.date !== newEntry.date);
+                    return [...filtered, newEntry].sort((a,b) => new Date(a.date) - new Date(b.date));
+                  });
+                  setWeight("");
+                }}
+                style={{ padding: "10px 20px", borderRadius: 8, background: "#a8ff78", color: "#111", border: "none", fontWeight: 700 }}
+              >Enregistrer</button>
+            </div>
+          </div>
+
+          <div style={{ background: "#161616", padding: 16, borderRadius: 12 }}>
+            <div style={{ fontSize: 13, color: "#888", marginBottom: 16 }}>Évolution mensuelle</div>
+            <MonthlyChart data={history} />
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <div style={{ fontSize: 13, color: "#888", marginBottom: 10 }}>Historique</div>
+            {history.slice().reverse().map((entry, idx) => (
+              <div key={idx} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #1e1e1e", fontSize: 13 }}>
+                <span style={{ color: "#eee" }}>{entry.date}</span>
+                <span style={{ fontWeight: 700, color: "#a8ff78" }}>{entry.weight} kg</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
