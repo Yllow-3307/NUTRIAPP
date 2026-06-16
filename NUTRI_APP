@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 
 const MACROS = {
-  force: { kcal: 2500, prot: 135, glucides: 310, lipides: 70 },
+  force: { kcal: 2500, prot: 135, glucides: 310, lipides: 70 }, 
   running: { kcal: 2400, prot: 130, glucides: 280, lipides: 68 },
   repos: { kcal: 2100, prot: 120, glucides: 230, lipides: 65 },
 };
