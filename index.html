@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nutrition Dashboard</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            background-color: #111;
+            color: #eee;
+            font-family: 'Inter', sans-serif;
+        }
+        * {
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const MACROS = {
+            force: { kcal: 2500, prot: 135, glucides: 310, lipides: 70 }, 
+            running: { kcal: 2400, prot: 130, glucides: 280, lipides: 68 },
+            repos: { kcal: 2100, prot: 120, glucides: 230, lipides: 65 },
+        };
+
+        const PHASE_ADJUSTMENTS = {
+            1: { label: "Phase 1 — Fondations", multiplier: 1 },
+            2: { label: "Phase 2 — Progression", kcal: 150, glucides: 30, prot: 10 },
+            3: { label: "Phase 3 — Skill Work", kcal: 150, glucides: 30, prot: 10 },
+        };
+
+        const MEALS = {
+            "Post séance 11h ⭐": [
+                { id: "ps1", label: "Bol riz / poulet", kcal: 580, prot: 45, glucides: 65, lipides: 12 },
+                { id: "ps2", label: "Bol patate douce / œufs", kcal: 510, prot: 24, glucides: 60, lipides: 18 },
+                { id: "ps3", label: "Bol pâtes / thon", kcal: 530, prot: 38, glucides: 62, lipides: 10 },
+                { id: "ps4", label: "Bol quinoa / saumon", kcal: 560, prot: 42, glucides: 55, lipides: 16 },
+                { id: "ps5", label: "Wrap poulet / riz", kcal: 590, prot: 40, glucides: 68, lipides: 14 },
+            ],
+            "Déjeuner 14h": [
+                { id: "dj1", label: "Poulet rôti / légumes au four", kcal: 620, prot: 48, glucides: 55, lipides: 18 },
+                { id: "dj2", label: "Pâtes bolognaise maison", kcal: 670, prot: 42, glucides: 75, lipides: 20 },
+                { id: "dj3", label: "Riz / lentilles / œuf dur", kcal: 540, prot: 28, glucides: 72, lipides: 12 },
+                { id: "dj4", label: "Steak / patate douce / salade", kcal: 600, prot: 45, glucides: 52, lipides: 19 },
+                { id: "dj5", label: "Sardines / pain complet / tomates", kcal: 490, prot: 38, glucides: 40, lipides: 16 },
+            ],
+            "Collation 17h": [
+                { id: "c1", label: "Fromage blanc / fruits / oléagineux", kcal: 310, prot: 22, glucides: 28, lipides: 12 },
+                { id: "c2", label: "Pain complet / beurre de cacahuète / banane", kcal: 380, prot: 14, glucides: 52, lipides: 14 },
+                { id: "c3", label: "Œufs durs / fruit", kcal: 240, prot: 16, glucides: 18, lipides: 10 },
+                { id: "c4", label: "Yaourt grec / granola / miel", kcal: 330, prot: 18, glucides: 42, lipides: 8 },
+                { id: "c5", label: "Fromage / pain complet / fruit", kcal: 350, prot: 20, glucides: 36, lipides: 14 },
+            ],
+            "Dîner 20h": [
+                { id: "dn1", label: "Saumon / riz / brocolis", kcal: 540, prot: 40, glucides: 48, lipides: 18 },
+                { id: "dn2", label: "Omelette / pommes de terre / salade", kcal: 480, prot: 26, glucides: 42, lipides: 20 },
+                { id: "dn3", label: "Poulet / pâtes / épinards", kcal: 560, prot: 44, glucides: 52, lipides: 14 },
+                { id: "dn4", label: "Maquereau / quinoa / haricots verts", kcal: 500, prot: 38, glucides: 44, lipides: 16 },
+                { id: "dn5", label: "Soupe poireau / pain complet / œufs durs", kcal: 420, prot: 24, glucides: 48, lipides: 12 },
+            ],
+            "Collation nocturne 21h30": [
+                { id: "cn1", label: "Fromage blanc / amandes", kcal: 220, prot: 18, glucides: 8, lipides: 12 },
+                { id: "cn2", label: "Yaourt grec / noix", kcal: 230, prot: 16, glucides: 10, lipides: 14 },
+                { id: "cn3", label: "Fromage à pâte dure", kcal: 200, prot: 14, glucides: 2, lipides: 16 },
+            ],
+        };
+
+        const DAY_TYPES = {
+            Lundi: "running", Mardi: "force", Mercredi: "running",
+            Jeudi: "force", Vendredi: "running", Samedi: "force", Dimanche: "repos",
+        };
+        const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+        const todayIndex = (new Date().getDay() + 6) % 7;
+        const todayName = DAYS[todayIndex];
+
+        const MacroBar = ({ label, value, max, color }) => {
+            const pct = Math.min((value / max) * 100, 100);
+            return (
+                <div style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#888", marginBottom: 3 }}>
+                        <span>{label}</span>
+                        <span style={{ color: value > max ? "#ff6b6b" : "#ccc" }}>{Math.round(value)} / {max}g</span>
+                    </div>
+                    <div style={{ background: "#1e1e1e", borderRadius: 6, height: 8, overflow: "hidden" }}>
+                        <div style={{ width: `${pct}%`, height: "100%", background: value > max ? "#ff6b6b" : color, borderRadius: 6, transition: "width 0.4s ease" }} />
+                    </div>
+                </div>
+            );
+        };
+
+        function NutritionDashboard() {
+            const [dayType, setDayType] = useState(DAY_TYPES[todayName]);
+            const [phase, setPhase] = useState(1);
+            const [checkedMeals, setCheckedMeals] = useState({});
+            const [selectedMeals, setSelectedMeals] = useState({});
+            const [water, setWater] = useState(0);
+            const [activeTab, setActiveTab] = useState("journal");
+            const [generatedPlan, setGeneratedPlan] = useState(null);
+            const [loadingPlan, setLoadingPlan] = useState(false);
+            const [selectedDay, setSelectedDay] = useState(todayName);
+
+            const getTargets = () => {
+                const base = { ...MACROS[dayType] };
+                if (phase >= 2 && dayType === "force") {
+                    return { kcal: base.kcal + 150, prot: base.prot + 10, glucides: base.glucides + 30, lipides: base.lipides };
+                }
+                return base;
+            };
+
+            const targets = getTargets();
+
+            const eaten = Object.entries(checkedMeals).reduce(
+                (acc, [slot, mealId]) => {
+                    if (!mealId) return acc;
+                    const meal = Object.values(MEALS).flat().find((m) => m.id === mealId);
+                    if (meal) {
+                        acc.kcal += meal.kcal;
+                        acc.prot += meal.prot;
+                        acc.glucides += meal.glucides;
+                        acc.lipides += meal.lipides;
+                    }
+                    return acc;
+                },
+                { kcal: 0, prot: 0, glucides: 0, lipides: 0 }
+            );
+
+            const generatePlan = async () => {
+                setLoadingPlan(true);
+                setGeneratedPlan(null);
+                const excluded = "champignons, courgette, aubergine, poireau (sauf soupe), organes, dattes";
+                const t = targets;
+                const prompt = `Tu es un coach nutrition. Génère un plan de repas pour une journée de type "${dayType}" pour un ectomorphe de 60kg/175cm qui s'entraîne à jeun à 9h (callisthénie + running).
+                
+Cibles : ${t.kcal} kcal, ${t.prot}g protéines, ${t.glucides}g glucides, ${t.lipides}g lipides.
+Aliments exclus : ${excluded}.
+Cuisine maison simple. 5 repas : Post-séance 11h, Déjeuner 14h, Collation 17h, Dîner 20h, Collation nocturne 21h30.
+
+Réponds UNIQUEMENT en JSON, sans backticks ni preamble, exactement ce format :
+{
+  "repas": [
+    { "heure": "11h", "nom": "...", "aliments": ["...", "..."], "kcal": 0, "prot": 0, "glucides": 0, "lipides": 0 }
+  ],
+  "total": { "kcal": 0, "prot": 0, "glucides": 0, "lipides": 0 },
+  "conseil": "..."
+}`;
+
+                try {
+                    const res = await fetch("https://api.anthropic.com/v1/messages", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            model: "claude-sonnet-4-6",
+                            max_tokens: 1000,
+                            messages: [{ role: "user", content: prompt }],
+                        }),
+                    });
+                    const data = await res.json();
+                    const text = data.content?.find((b) => b.type === "text")?.text || "";
+                    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+                    setGeneratedPlan(parsed);
+                } catch (e) {
+                    setGeneratedPlan({ error: "Erreur lors de la génération. Réessaie." });
+                }
+                setLoadingPlan(false);
+            };
+
+            const toggleMeal = (slot, mealId) => {
+                setCheckedMeals((prev) => ({ ...prev, [slot]: prev[slot] === mealId ? null : mealId }));
+            };
+
+            const waterPct = Math.min((water / 3) * 100, 100);
+
+            const btnStyle = (active) => ({
+                padding: "8px 18px", borderRadius: 20, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13,
+                background: active ? "#a8ff78" : "#1e1e1e", color: active ? "#111" : "#888", transition: "all 0.2s",
+            });
+
+            const tabStyle = (active) => ({
+                flex: 1, padding: "10px 0", border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13,
+                background: "transparent", color: active ? "#a8ff78" : "#555", borderBottom: active ? "2px solid #a8ff78" : "2px solid transparent",
+                transition: "all 0.2s",
+            });
+
+            return (
+                <div style={{ background: "#111", minHeight: "100vh", color: "#eee", fontFamily: "'Inter', sans-serif", maxWidth: 480, margin: "0 auto", padding: "0 0 40px" }}>
+                    {/* Header */}
+                    <div style={{ padding: "28px 20px 16px", borderBottom: "1px solid #1e1e1e" }}>
+                        <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.5 }}>🥑 Nutrition</div>
+                        <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>60 kg · 175 cm · Ectomorphe</div>
+
+                        {/* Day selector */}
+                        <div style={{ marginTop: 16, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {DAYS.map((d) => (
+                                <button key={d} onClick={() => { setSelectedDay(d); setDayType(DAY_TYPES[d]); }} style={{
+                                    ...btnStyle(selectedDay === d),
+                                    padding: "5px 10px", fontSize: 11,
+                                    outline: d === todayName ? "1px solid #a8ff7844" : "none",
+                                }}>{d.slice(0, 3)}</button>
+                            ))}
+                        </div>
+
+                        {/* Day type + Phase */}
+                        <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
+                            {["force", "running", "repos"].map((t) => (
+                                <button key={t} onClick={() => setDayType(t)} style={btnStyle(dayType === t)}>
+                                    {t === "force" ? "💪 Force" : t === "running" ? "🏃 Running" : "😴 Repos"}
+                                </button>
+                            ))}
+                        </div>
+                        <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                            {[1, 2, 3].map((p) => (
+                                <button key={p} onClick={() => setPhase(p)} style={{ ...btnStyle(phase === p), fontSize: 11, padding: "4px 12px" }}>Phase {p}</button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Macro summary */}
+                    <div style={{ padding: "16px 20px", background: "#161616", borderBottom: "1px solid #1e1e1e" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 15 }}>
+                            <div>
+                                <span style={{ fontSize: 18, fontWeight: 700, color: "#eee" }}>{Math.round(eaten.kcal)}</span>
+                                <span style={{ fontSize: 14, color: "#555", marginLeft: 4 }}>/ {targets.kcal} kcal</span>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                                <div style={{ fontSize: 11, color: "#555", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Restant</div>
+                                <div style={{ color: targets.kcal - eaten.kcal < 0 ? "#ff6b6b" : "#a8ff78", fontWeight: 800, fontSize: 24, letterSpacing: -0.5 }}>
+                                    {Math.max(0, targets.kcal - Math.round(eaten.kcal))} kcal
+                                </div>
+                            </div>
+                        </div>
+                        <MacroBar label="Protéines" value={eaten.prot} max={targets.prot} color="#78c8ff" />
+                        <MacroBar label="Glucides" value={eaten.glucides} max={targets.glucides} color="#ffd978" />
+                        <MacroBar label="Lipides" value={eaten.lipides} max={targets.lipides} color="#ff9f78" />
+                    </div>
+
+                    {/* Tabs */}
+                    <div style={{ display: "flex", borderBottom: "1px solid #1e1e1e", background: "#111" }}>
+                        <button style={tabStyle(activeTab === "journal")} onClick={() => setActiveTab("journal")}>Journal</button>
+                        <button style={tabStyle(activeTab === "plan")} onClick={() => setActiveTab("plan")}>Plan IA</button>
+                        <button style={tabStyle(activeTab === "hydra")} onClick={() => setActiveTab("hydra")}>Hydratation</button>
+                    </div>
+
+                    {/* Tab: Journal */}
+                    {activeTab === "journal" && (
+                        <div style={{ padding: "16px 20px" }}>
+                            {Object.entries(MEALS).map(([slot, options]) => (
+                                <div key={slot} style={{ marginBottom: 20 }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: "#a8ff78", marginBottom: 10, textTransform: "uppercase", letterSpacing: 1 }}>{slot}</div>
+                                    {options.map((meal) => {
+                                        const checked = checkedMeals[slot] === meal.id;
+                                        return (
+                                            <div key={meal.id} onClick={() => toggleMeal(slot, meal.id)} style={{
+                                                display: "flex", alignItems: "center", gap: 12, padding: "10px 12px",
+                                                borderRadius: 10, marginBottom: 6, cursor: "pointer", transition: "all 0.2s",
+                                                background: checked ? "#1a2a1a" : "#161616",
+                                                border: `1px solid ${checked ? "#a8ff7844" : "#1e1e1e"}`,
+                                            }}>
+                                                <div style={{
+                                                    width: 20, height: 20, borderRadius: 6, border: `2px solid ${checked ? "#a8ff78" : "#333"}`,
+                                                    background: checked ? "#a8ff78" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                                                }}>
+                                                    {checked && <span style={{ fontSize: 11, color: "#111", fontWeight: 800 }}>✓</span>}
+                                                </div>
+                                                <div style={{ flex: 1 }}>
+                                                    <div style={{ fontSize: 13, fontWeight: 600, color: checked ? "#a8ff78" : "#ccc" }}>{meal.label}</div>
+                                                    <div style={{ fontSize: 11, color: "#555", marginTop: 2 }}>{meal.kcal} kcal · {meal.prot}g P · {meal.glucides}g G · {meal.lipides}g L</div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Tab: Plan IA */}
+                    {activeTab === "plan" && (
+                        <div style={{ padding: "20px" }}>
+                            <div style={{ fontSize: 13, color: "#888", marginBottom: 16 }}>
+                                Génère un plan personnalisé pour une journée <strong style={{ color: "#eee" }}>{dayType}</strong> — Phase {phase}, {targets.kcal} kcal cibles.
+                            </div>
+                            <button onClick={generatePlan} disabled={loadingPlan} style={{
+                                width: "100%", padding: "14px", borderRadius: 12, border: "none", cursor: loadingPlan ? "not-allowed" : "pointer",
+                                background: loadingPlan ? "#1e1e1e" : "#a8ff78", color: "#111", fontWeight: 800, fontSize: 15,
+                            }}>
+                                {loadingPlan ? "⏳ Génération en cours..." : "✨ Générer mon plan du jour"}
+                            </button>
+
+                            {generatedPlan?.error && (
+                                <div style={{ marginTop: 16, padding: 14, background: "#2a1a1a", borderRadius: 10, color: "#ff6b6b", fontSize: 13 }}>{generatedPlan.error}</div>
+                            )}
+
+                            {generatedPlan && !generatedPlan.error && (
+                                <div style={{ marginTop: 20 }}>
+                                    {generatedPlan.repas?.map((r, i) => (
+                                        <div key={i} style={{ marginBottom: 14, padding: 14, background: "#161616", borderRadius: 12, border: "1px solid #1e1e1e" }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                                                <span style={{ fontSize: 13, fontWeight: 700, color: "#a8ff78" }}>{r.heure} — {r.nom}</span>
+                                                <span style={{ fontSize: 12, color: "#555" }}>{r.kcal} kcal</span>
+                                            </div>
+                                            <ul style={{ margin: "0 0 8px 0", padding: "0 0 0 16px" }}>
+                                                {r.aliments?.map((a, j) => (
+                                                    <li key={j} style={{ fontSize: 12, color: "#888", marginBottom: 2 }}>{a}</li>
+                                                ))}
+                                            </ul>
+                                            <div style={{ fontSize: 11, color: "#444" }}>{r.prot}g P · {r.glucides}g G · {r.lipides}g L</div>
+                                        </div>
+                                    ))}
+                                    {generatedPlan.total && (
+                                        <div style={{ padding: 14, background: "#1a2a1a", borderRadius: 12, border: "1px solid #a8ff7833" }}>
+                                            <div style={{ fontSize: 12, fontWeight: 700, color: "#a8ff78", marginBottom: 6 }}>TOTAL JOURNÉE</div>
+                                            <div style={{ fontSize: 13, color: "#ccc" }}>
+                                                {generatedPlan.total.kcal} kcal · {generatedPlan.total.prot}g P · {generatedPlan.total.glucides}g G · {generatedPlan.total.lipides}g L
+                                            </div>
+                                        </div>
+                                    )}
+                                    {generatedPlan.conseil && (
+                                        <div style={{ marginTop: 12, padding: 14, background: "#161616", borderRadius: 12, fontSize: 13, color: "#888", borderLeft: "3px solid #a8ff78" }}>
+                                            💡 {generatedPlan.conseil}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Tab: Hydratation */}
+                    {activeTab === "hydra" && (
+                        <div style={{ padding: "24px 20px" }}>
+                            <div style={{ textAlign: "center", marginBottom: 24 }}>
+                                <div style={{ fontSize: 48, fontWeight: 800, color: water >= 3 ? "#a8ff78" : "#78c8ff" }}>{water.toFixed(1)}L</div>
+                                <div style={{ fontSize: 13, color: "#555" }}>objectif : 3L minimum</div>
+                            </div>
+
+                            {/* Water bottle visual */}
+                            <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
+                                <div style={{ width: 80, height: 160, borderRadius: "0 0 16px 16px", border: "2px solid #333", position: "relative", overflow: "hidden", background: "#111" }}>
+                                    <div style={{
+                                        position: "absolute", bottom: 0, left: 0, right: 0,
+                                        height: `${waterPct}%`, background: water >= 3 ? "#a8ff7866" : "#78c8ff55",
+                                        transition: "height 0.4s ease",
+                                    }} />
+                                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                                        💧
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Controls */}
+                            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                                {[0.25, 0.5, 1].map((v) => (
+                                    <button key={v} onClick={() => setWater((w) => Math.min(w + v, 5))} style={{
+                                        padding: "12px 20px", borderRadius: 12, border: "none", cursor: "pointer",
+                                        background: "#161616", color: "#78c8ff", fontWeight: 700, fontSize: 14,
+                                        border: "1px solid #1e1e1e",
+                                    }}>+{v}L</button>
+                                ))}
+                            </div>
+                            <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 10 }}>
+                                <button onClick={() => setWater((w) => Math.max(w - 0.25, 0))} style={{
+                                    padding: "10px 20px", borderRadius: 12, border: "1px solid #1e1e1e", cursor: "pointer",
+                                    background: "#161616", color: "#555", fontWeight: 600, fontSize: 13,
+                                }}>−0.25L</button>
+                                <button onClick={() => setWater(0)} style={{
+                                    padding: "10px 20px", borderRadius: 12, border: "1px solid #1e1e1e", cursor: "pointer",
+                                    background: "#161616", color: "#555", fontWeight: 600, fontSize: 13,
+                                }}>Reset</button>
+                            </div>
+
+                            {/* Tips */}
+                            <div style={{ marginTop: 24, padding: 14, background: "#161616", borderRadius: 12, borderLeft: "3px solid #78c8ff" }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: "#78c8ff", marginBottom: 6 }}>RAPPELS</div>
+                                <div style={{ fontSize: 12, color: "#666", lineHeight: 1.7 }}>
+                                    • Verre d'eau dès le réveil avant la séance<br />
+                                    • 500ml post-séance avec le repas 11h<br />
+                                    • En Thaïlande : eau en bouteille uniquement, 3L minimum
+                                </div>
+                            </div>
+
+                            {water >= 3 && (
+                                <div style={{ marginTop: 16, padding: 14, background: "#1a2a1a", borderRadius: 12, textAlign: "center", fontSize: 14, color: "#a8ff78", fontWeight: 700 }}>
+                                    ✅ Objectif hydratation atteint !
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<NutritionDashboard />);
+    </script>
+</body>
+</html>
